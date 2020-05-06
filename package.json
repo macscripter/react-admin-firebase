@@ -1,62 +1,61 @@
 {
-  "_args": [
-    [
-      "react-admin-firebase@0.4.1",
-      "C:\\bandwitt_20190602\\bandwith-techreach"
-    ]
-  ],
-  "_from": "react-admin-firebase@0.4.1",
-  "_id": "react-admin-firebase@0.4.1",
-  "_inBundle": false,
-  "_integrity": "sha512-3+2d1WXSt0CSeUN1EFXMadGdG/OSZzHzy7oQdItEfcpKfHsBlVY2GvXtrTVQ7PRoaXOA7KwZZ74GZp9PwKUgfg==",
-  "_location": "/react-admin-firebase",
-  "_phantomChildren": {},
-  "_requested": {
-    "type": "version",
-    "registry": true,
-    "raw": "react-admin-firebase@0.4.1",
-    "name": "react-admin-firebase",
-    "escapedName": "react-admin-firebase",
-    "rawSpec": "0.4.1",
-    "saveSpec": null,
-    "fetchSpec": "0.4.1"
+  "name": "react-admin-firebase-bandwitt",
+  "description": "A firebase data provider for the React Admin framework",
+  "version": "3.1.6",
+  "peerDependencies": {
+    "firebase": "^7.9.x",
+    "react": "^16.x",
+    "react-admin": "^3.x",
+    "react-dom": "^16.x"
   },
-  "_requiredBy": [
-    "/"
-  ],
-  "_resolved": "https://registry.npmjs.org/react-admin-firebase/-/react-admin-firebase-0.4.1.tgz",
-  "_spec": "0.4.1",
-  "_where": "C:\\bandwitt_20190602\\bandwith-techreach",
   "dependencies": {
+    "lodash": "4.x",
+    "path-browserify": "^1.0.0",
+    "rxjs": "^6.5.x"
+  },
+  "devDependencies": {
+    "@firebase/app-types": "^0.3.9",
+    "@firebase/auth-types": "^0.6.0",
+    "@firebase/firestore-types": "1.2.0",
+    "@firebase/testing": "^0.19.1",
+    "@firebase/util": "^0.2.11",
     "@types/firebase": "^3.2.1",
+    "@types/jest": "^24.0.13",
+    "@types/lodash": "^4.14.150",
     "@types/node": "^10.9.4",
-    "firebase": "^5.5.0",
-    "ra-realtime": "^2.6.0",
-    "react": "^16.8.6",
-    "react-admin": "^2.3.1",
-    "react-dom": "^16.8.6",
-    "rxjs": "^6.3.2",
+    "@types/react": "^16.8.13",
+    "@types/rx": "^4.1.1",
+    "cpx": "^1.5.0",
+    "del": "^3.0.0",
+    "firebase": "^7.9.1",
+    "firebase-tools": "^8.1.1",
+    "gulp": "^3.9.1",
+    "gulp-sequence": "^1.0.0",
+    "jest": "^23.6.0",
+    "microbundle": "^0.11.0",
+    "ts-jest": "^25",
+    "tslint": "^5.16.0",
     "typescript": "^3.0.3"
   },
-  "description": "A firebase data provider for the React Admin framework",
-  "devDependencies": {
-    "@firebase/app-types": "^0.3.7",
-    "@firebase/util": "^0.2.11",
-    "microbundle": "^0.11.0"
-  },
-  "email": "hello@benwinding.com",
-  "homepage": "https://github.com/benwinding/react-admin-firebase",
+  "homepage": "https://github.com/macscripter/react-admin-firebase-bandwitt",
+  "email": "alex.pavlov.developer@gmail.com",
   "license": "MIT",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "name": "react-admin-firebase",
   "scripts": {
-    "build": "microbundle",
-    "watch": "tsc -w --project tsconfig.json",
-    "watch-micro": "microbundle watch"
+    "build": "rm -rf dist && microbundle",
+    "watch": "microbundle watch",
+    "start-demo": "gulp start-demo",
+    "start-emulator": "yarn firebase emulators:start --only firestore",
+    "test": "yarn firebase emulators:exec \"yarn jest --forceExit --detectOpenHandles\"",
+    "test-watch": "yarn firebase emulators:exec \"yarn jest --watchAll --detectOpenHandles\""
   },
-  "source": "src/index.ts",
-  "types": "dist/types.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "umd:main": "dist/index.umd.js",
-  "version": "0.4.1"
+  "source": "src/index.ts"
 }
