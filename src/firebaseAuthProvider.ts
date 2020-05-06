@@ -1,7 +1,16 @@
 import * as firebase from "firebase/app";
 import "firebase/auth";
+import "firebase/firestore";
 
-import { AUTH_LOGIN, AUTH_LOGOUT, AUTH_ERROR, AUTH_CHECK } from "react-admin";
+import {
+  AUTH_LOGIN,
+  AUTH_LOGOUT,
+  AUTH_ERROR,
+  AUTH_CHECK,
+  AUTH_GET_PERMISSIONS
+} from "react-admin";
+
+import { Observable } from "rxjs";
 
 function log(description: string, obj?: {}) {
   if (ISDEBUG) {
@@ -11,9 +20,11 @@ function log(description: string, obj?: {}) {
 
 var ISDEBUG = false;
 
+
 class AuthClient {
   app: firebase.app.App;
   auth: firebase.auth.Auth;
+  db: firebase.firestore.Firestore;
 
   constructor(firebaseConfig: {}) {
     log("Auth Client: initializing...");
@@ -23,17 +34,21 @@ class AuthClient {
       this.app = firebase.app();
     }
     this.auth = firebase.auth();
+	this.db = this.app.firestore();
   }
 
   async HandleAuthLogin(params) {
     const { username, password } = params;
-
+    console.log('HandleAuthLogin......');
     try {
+		console.log('no hay token,signInWithEmailAndPassword');
       const user = await this.auth.signInWithEmailAndPassword(
         username,
         password
       );
-      log("HandleAuthLogin: user sucessfully logged in", { user });
+	  log("HandleAuthLogin: user sucessfully logged in", { user });
+
+      
     } catch (e) {
       log("HandleAuthLogin: invalid credentials", { params });
       throw new Error("Login error: invalid credentials");
@@ -41,6 +56,7 @@ class AuthClient {
   }
 
   async HandleAuthLogout(params) {
+	console.log('HandleAuthLogout');
     await this.auth.signOut();
   }
 
@@ -50,8 +66,11 @@ class AuthClient {
     try {
       const user = await this.getUserLogin();
       log("HandleAuthCheck: user is still logged in", { user });
+      console.log("HandleAuthCheck: user is still logged in", { user });
     } catch (e) {
       log("HandleAuthCheck: ", { e });
+      console.log("HandleAuthCheck: ", { e });
+      return Promise.reject();
     }
   }
 
@@ -66,6 +85,52 @@ class AuthClient {
       });
     });
   }
+  
+  async getPermissions() {
+    return new Promise((resolve, reject) => {
+      this.auth.onAuthStateChanged(user => {
+        if (user) {
+		  var userRef = firebase.firestore().collection('users').doc(user.uid || '');
+		  var getDoc = userRef.get()
+		  .then(doc => {
+			if (!doc.exists) {
+			  resolve('user');
+			} else {
+			  resolve(doc.data().isAdmin?'admin':'user');
+			}
+		  })
+		  .catch(err => {
+			console.log('Error getting document', err);
+			reject();
+		  }); 
+        } else {
+		  console.log('no hay permisos......');
+		  resolve('guest');
+          //reject("User not logged in");
+        }
+      });
+    });
+  }  
+  
+  async getUserPermissions(email) {
+    return new Promise((resolve, reject) => {
+		var userRef = firebase.firestore().collection('users').doc(email);
+		var getDoc = userRef.get()
+		  .then(doc => {
+			if (!doc.exists) {
+			  resolve(false);
+			} else {
+			  resolve(doc.data().isAdmin);
+			}
+		  })
+		  .catch(err => {
+			console.log('Error getting document', err);
+			reject();
+		  });
+			});
+  }
+  
+  
 }
 
 function SetUpAuth(config: {}) {
@@ -90,6 +155,8 @@ function SetUpAuth(config: {}) {
           await auth.HandleAuthError(params);
         case AUTH_CHECK:
           await auth.HandleAuthCheck(params);
+        case AUTH_GET_PERMISSIONS:
+          return await auth.getPermissions();
         default:
           throw new Error("Unhandled auth type:" + type);
       }

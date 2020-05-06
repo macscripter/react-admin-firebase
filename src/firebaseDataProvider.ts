@@ -1,4 +1,5 @@
 import * as firebase from "firebase/app";
+import rp from "request-promise";
 import "firebase/firestore";
 
 import {
@@ -97,26 +98,189 @@ class FirebaseClient {
     });
   }
 
+  private async getFirebaseSource(myResource: string): Promise<Array<{}>> {
+    return new Promise((resolve, reject) => {
+      var sourceRef = firebase.firestore().collection(myResource);
+      var query = sourceRef
+        //.where("published", "==", true)
+        .get()
+        .then(snapshot => {
+          if (snapshot.empty) {
+            resolve([]);
+          }
+          let result = [];
+          snapshot.forEach(doc => {
+            result.push({ id: doc.id, ...doc.data() });
+          });
+          resolve(result);
+        })
+        .catch(err => {
+          reject();
+        });
+    });
+  }
+
+  private async insertDataInFirebaseWithId(
+    resourceName: string,
+    params: IParamsCreate
+  ): Promise<{ id }> {
+    return new Promise((resolve, reject) => {
+      const myId = params.data["myId"].toLowerCase();
+      var sourceRef = firebase
+        .firestore()
+        .collection(resourceName)
+        .doc(myId);
+      delete params.data["myId"];
+      var query = sourceRef
+        .set({
+          ...params.data,
+          createdate: firebase.firestore.FieldValue.serverTimestamp(),
+          lastupdate: firebase.firestore.FieldValue.serverTimestamp(),
+          createdByUid: firebase.auth().currentUser.uid,
+          updatedByUid: firebase.auth().currentUser.uid,
+          createdByEmail: firebase.auth().currentUser.email,
+          updatedByEmail: firebase.auth().currentUser.email
+        })
+        .then(() => {
+          resolve({ id: myId });
+        })
+        .catch(err => {
+          reject();
+        });
+    });
+  }
+
+  private async addDataInFirebase(
+    resourceName: string,
+    params: IParamsCreate
+  ): Promise<{ id }> {
+    return new Promise((resolve, reject) => {
+      var sourceRef = firebase.firestore().collection(resourceName);
+      var query = sourceRef
+        .add({
+          ...params.data,
+          createdate: firebase.firestore.FieldValue.serverTimestamp(),
+          lastupdate: firebase.firestore.FieldValue.serverTimestamp(),
+          createdByUid: firebase.auth().currentUser.uid,
+          updatedByUid: firebase.auth().currentUser.uid,
+          createdByEmail: firebase.auth().currentUser.email,
+          updatedByEmail: firebase.auth().currentUser.email
+        })
+        .then(ref => {
+          resolve({ id: ref.id });
+        })
+        .catch(err => {
+          reject();
+        });
+    });
+  }
+
+  private async updateDataInFirebase(
+    resourceName: string,
+    params: IParamsCreate,
+    myId: string
+  ): Promise<{ id }> {
+    return new Promise((resolve, reject) => {
+      var sourceRef = firebase
+        .firestore()
+        .collection(resourceName)
+        .doc(myId);
+      var query = sourceRef
+        .update({
+          ...params.data,
+          lastupdate: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedByUid: firebase.auth().currentUser.uid,
+          updatedByEMail: firebase.auth().currentUser.email
+        })
+        .then(ref => {
+          resolve({ id: myId });
+        })
+        .catch(err => {
+          reject();
+        });
+    });
+  }
+
   public async apiGetList(
     resourceName: string,
     params: IParamsGetList
   ): Promise<IResponseGetList> {
     const r = await this.tryGetResource(resourceName);
     const data = r.list;
-    if (params.sort != null) {
-      const { field, order } = params.sort;
-      if (order === "ASC") {
-        this.sortArray(data, field, "asc");
-      } else {
-        this.sortArray(data, field, "desc");
-      }
-    }
+    const { field = "id", order = "asc" } = params.sort || {};
+    this.sortArray(
+      data,
+      field,
+      order.toString().toLowerCase() == "asc" ? "asc" : "desc"
+    );
     log("apiGetList", { resourceName, resource: r, params });
-    let filteredData = this.filterArray(data, params.filter);
-    const pageStart = (params.pagination.page - 1) * params.pagination.perPage;
-    const pageEnd = pageStart + params.pagination.perPage;
-    const dataPage = filteredData.slice(pageStart, pageEnd);
-    const total = r.list.length;
+
+    let filteredData = this.filterArray(data, params.filter || {});
+
+    if (
+      [
+        "analysisActionsUsers",
+        "analysisDataUsers",
+        "analysisProductionUsers",
+        "analysisSystemUsers",
+        "analysisTeamUsers"
+      ].indexOf(resourceName) !== -1
+    ) {
+      const filteredDataUsers = this.filterArray(data, params.filter || {});
+      const questionsInConnectedUser = filteredDataUsers.filter(
+        (item: {published: boolean, createdByUid: string }) => {
+          if (item.createdByUid === firebase.auth().currentUser.uid && item.published === true) {
+            return true;
+          } else {
+            return false;
+          }
+        }
+      );
+      const datar = await this.getFirebaseSource(
+        resourceName.replace("Users", "")
+      );
+      const questionsInTemplate = this.filterArray(datar, params.filter || {}).filter(
+        (item: {published: boolean}) => {
+          if (item.published === true) {
+            return true;
+          } else {
+            return false;
+          }
+        }
+      );
+      const questions2AddFromTemplate = questionsInTemplate
+        .filter((item: {id: string }) => {
+          const filteredInTemplate = questionsInConnectedUser.filter(
+            (val: { questionId: string }) => {
+              if (val.questionId === item.id) {
+                return true;
+              } else {
+                return false;
+              }
+            }
+          );
+          if (filteredInTemplate.length < 1) {
+            return true;
+          } else {
+            return false;
+          }
+        })
+        .map((doc: firebase.firestore.QueryDocumentSnapshot) => {
+          return { ...doc, questionId: doc.id };
+        });
+      filteredData = [
+        ...questionsInConnectedUser,
+        ...questions2AddFromTemplate
+      ];
+    }
+
+    const { page = 1, perPage = -1 } = params.pagination || {};
+    const pageStart = (page - 1) * perPage;
+    const pageEnd = pageStart + perPage;
+    const dataPage = params.pagination
+      ? filteredData.slice(pageStart, pageEnd)
+      : filteredData;
+    const total = filteredData.length;
     return {
       data: dataPage,
       total
@@ -127,9 +291,44 @@ class FirebaseClient {
     resourceName: string,
     params: IParamsGetOne
   ): Promise<IResponseGetOne> {
-    const r = await this.tryGetResource(resourceName);
-    log("apiGetOne", { resourceName, resource: r, params });
-    const data = r.list.filter((val: { id: string }) => val.id === params.id);
+    let data;
+    if (
+      [
+        "analysisActionsUsers",
+        "analysisDataUsers",
+        "analysisProductionUsers",
+        "analysisSystemUsers",
+        "analysisTeamUsers"
+      ].indexOf(resourceName) !== -1
+    ) {
+      let r = await this.getFirebaseSource(resourceName);
+      data = r.filter((val: { id: string }) => val.id === params.id);
+      if (data.length < 1) {
+        r = await this.getFirebaseSource(resourceName.replace("Users", ""));
+        data = r
+          .filter((val: { id: string }) => val.id === params.id)
+          .map((doc: firebase.firestore.QueryDocumentSnapshot) => {
+            return { ...doc, questionId: doc.id };
+          });
+      }
+    } else if (resourceName === "users" && !params.id) {
+      let rr = await this.tryGetResource(resourceName);
+      data = rr.list.filter(
+        (val: { id: string }) => val.id === firebase.auth().currentUser.uid
+      );
+    } else if (resourceName === "profile") {
+      let rr = await this.getFirebaseSource("users");
+      let prevData = rr.filter(
+        (val: { id: string }) => val.id === firebase.auth().currentUser.uid
+      );
+      data = [];
+      prevData.forEach(doc => {
+        data.push({ ...doc, id: params.id });
+      });
+    } else {
+      let rr = await this.tryGetResource(resourceName);
+      data = rr.list.filter((val: { id: string }) => val.id === params.id);
+    }
     if (data.length < 1) {
       throw new Error(
         "react-admin-firebase: No id found matching: " + params.id
@@ -144,7 +343,17 @@ class FirebaseClient {
   ): Promise<IResponseCreate> {
     const r = await this.tryGetResource(resourceName);
     log("apiCreate", { resourceName, resource: r, params });
-    const doc = await r.collection.add(params.data);
+    const doc = params.data["myId"]
+      ? await this.insertDataInFirebaseWithId(resourceName, params)
+      : await r.collection.add({
+          ...params.data,
+          createdate: firebase.firestore.FieldValue.serverTimestamp(),
+          lastupdate: firebase.firestore.FieldValue.serverTimestamp(),
+          createdByUid: firebase.auth().currentUser.uid,
+          updatedByUid: firebase.auth().currentUser.uid,
+          createdByEmail: firebase.auth().currentUser.email,
+          updatedByEmail: firebase.auth().currentUser.email
+        });
     return {
       data: {
         ...params.data,
@@ -157,17 +366,93 @@ class FirebaseClient {
     resourceName: string,
     params: IParamsUpdate
   ): Promise<IResponseUpdate> {
+	  
+	let options = {
+    method: 'POST',
+    uri: 'https://us-central1-bandwitt-techreach.cloudfunctions.net/widgets/calculateScoring',
+    body: {
+        source: resourceName,
+		id: firebase.auth().currentUser.uid
+		
+    },
+    json: true // Automatically stringifies the body to JSON
+	};  
     const id = params.id;
     delete params.data.id;
-    const r = await this.tryGetResource(resourceName);
+    let r;
+    if (resourceName === "profile") {
+      r = {};
+      r.list = await this.getFirebaseSource("users");
+    } else {
+      r = await this.tryGetResource(resourceName);
+    }
     log("apiUpdate", { resourceName, resource: r, params });
-    r.collection.doc(id).update(params.data);
-    return {
-      data: {
-        ...params.data,
-        id
-      }
+
+    var data2Work = {
+      ...params.data,
+      lastupdate: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedByUid: firebase.auth().currentUser.uid,
+      updatedByEMail: firebase.auth().currentUser.email
     };
+
+    if (
+      [
+        "analysisActionsUsers",
+        "analysisDataUsers",
+        "analysisProductionUsers",
+        "analysisSystemUsers",
+        "analysisTeamUsers"
+      ].indexOf(resourceName) !== -1
+    ) {
+      const data = r.list.filter((val: { id: string }) => val.id === id);
+      if (data.length < 1) {
+        params.data["questionId"] = id;
+        const myDataAdded = await this.addDataInFirebase(resourceName, params);
+		const updateScoring = await rp(options);
+        return {
+          data: {
+            ...params.data,
+            id
+          }
+        };
+      } else {
+        const myDataIUpdated = await this.updateDataInFirebase(
+          resourceName,
+          params,
+          id
+        );
+		const updateScoring = await rp(options);
+        return {
+          data: {
+            ...params.data,
+            id
+          }
+        };
+      }
+    } else {
+      if (resourceName === "profile") {
+        const myDataIUpdated = await this.updateDataInFirebase(
+          "users",
+          params,
+          firebase.auth().currentUser.uid
+        );
+      }
+	  else if(resourceName === "users") {
+		options.body.id = id;
+		const updateScoring = await rp(options);
+		const resUpdateDefault = await r.collection.doc(id).update(data2Work);		
+	  }
+
+	  else {
+        const resUpdateDefault = await r.collection.doc(id).update(data2Work);
+      }
+      return {
+        data: {
+          ...data2Work,
+          id
+        }
+      };
+    }
   }
 
   public async apiUpdateMany(
@@ -179,11 +464,49 @@ class FirebaseClient {
     log("apiUpdateMany", { resourceName, resource: r, params });
     const returnData = [];
     for (const id of params.ids) {
-      r.collection.doc(id).update(params.data);
+      r.collection.doc(id).update({
+        ...params.data,
+        lastupdate: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedByUid: firebase.auth().currentUser.uid,
+        updatedByEmail: firebase.auth().currentUser.email
+      });
       returnData.push({
         ...params.data,
         id
       });
+      if (
+        [
+          "analysisActionsUsers",
+          "analysisDataUsers",
+          "analysisProductionUsers",
+          "analysisSystemUsers",
+          "analysisTeamUsers"
+        ].indexOf(resourceName) !== -1
+      ) {
+        const data = r.list.filter((val: { id: string }) => val.id === id);
+        if (data.length < 1) {
+          firebase
+            .firestore()
+            .collection(resourceName)
+            .add({
+              ...params.data,
+              createdate: firebase.firestore.FieldValue.serverTimestamp(),
+              createdByUid: firebase.auth().currentUser.uid,
+              createdByEmail: firebase.auth().currentUser.email
+            });
+        } else {
+          firebase
+            .firestore()
+            .collection(resourceName)
+            .doc(id)
+            .update({
+              ...params.data,
+              lastupdate: firebase.firestore.FieldValue.serverTimestamp(),
+              updatedByUid: firebase.auth().currentUser.uid,
+              updatedByEmail: firebase.auth().currentUser.email
+            });
+        }
+      }
     }
     return {
       data: returnData
@@ -222,10 +545,30 @@ class FirebaseClient {
     resourceName: string,
     params: IParamsGetMany
   ): Promise<IResponseGetMany> {
-    const r = await this.tryGetResource(resourceName);
-    log("apiGetMany", { resourceName, resource: r, params });
+    let r;
     const ids = new Set(params.ids);
-    const matches = r.list.filter(item => ids.has(item["id"]));
+    let matches;
+
+    if (
+      [
+        "analysisActionsUsers",
+        "analysisDataUsers",
+        "analysisProductionUsers",
+        "analysisSystemUsers",
+        "analysisTeamUsers"
+      ].indexOf(resourceName) !== -1
+    ) {
+      r = await this.getFirebaseSource(resourceName);
+      matches = r.filter(item => ids.has(item["id"]));
+      if (matches.length < 1) {
+        r = await this.getFirebaseSource(resourceName.replace("Users", ""));
+        matches = r.filter(item => ids.has(item["id"]));
+      }
+    } else {
+      r = await this.tryGetResource(resourceName);
+      matches = r.list.filter(item => ids.has(item["id"]));
+    }
+
     return {
       data: matches
     };
@@ -235,12 +578,32 @@ class FirebaseClient {
     resourceName: string,
     params: IParamsGetManyReference
   ): Promise<IResponseGetManyReference> {
-    const r = await this.tryGetResource(resourceName);
-    log("apiGetManyReference", { resourceName, resource: r, params });
-    const data = r.list;
+    let data;
     const targetField = params.target;
     const targetValue = params.id;
-    const matches = data.filter(val => val[targetField] === targetValue);
+    let matches;
+
+    if (
+      [
+        "analysisActionsUsers",
+        "analysisDataUsers",
+        "analysisProductionUsers",
+        "analysisSystemUsers",
+        "analysisTeamUsers"
+      ].indexOf(resourceName) !== -1
+    ) {
+      data = await this.getFirebaseSource(resourceName);
+      matches = data.filter(val => val[targetField] === targetValue);
+      if (matches.length < 1) {
+        data = await this.getFirebaseSource(resourceName.replace("Users", ""));
+        matches = data.filter(val => val[targetField] === targetValue);
+      }
+    } else {
+      let r = await this.tryGetResource(resourceName);
+      data = r.list;
+      matches = data.filter(val => val[targetField] === targetValue);
+    }
+
     if (params.sort != null) {
       const { field, order } = params.sort;
       if (order === "ASC") {
@@ -251,6 +614,7 @@ class FirebaseClient {
     }
     const pageStart = (params.pagination.page - 1) * params.pagination.perPage;
     const pageEnd = pageStart + params.pagination.perPage;
+
     const dataPage = matches.slice(pageStart, pageEnd);
     const total = matches.length;
     return { data: dataPage, total };
@@ -330,9 +694,11 @@ export let fb: FirebaseClient;
 
 export default function FirebaseProvider(config: {}) {
   if (!config) {
-    throw new Error('Please pass the Firebase config.json object to the FirebaseDataProvider');
+    throw new Error(
+      "Please pass the Firebase config.json object to the FirebaseDataProvider"
+    );
   }
-  ISDEBUG = config['debug'];
+  ISDEBUG = config["debug"];
   fb = new FirebaseClient(config);
   async function providerApi(
     type: string,
