@@ -1,3 +1,4 @@
 import "firebase/auth";
-declare function SetUpAuth(config: {}): (type: string, params: {}) => Promise<never>;
+import "firebase/firestore";
+declare function SetUpAuth(config: {}): (type: string, params: {}) => Promise<{}>;
 export default SetUpAuth;

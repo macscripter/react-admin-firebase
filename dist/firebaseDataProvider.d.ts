@@ -14,6 +14,10 @@ declare class FirebaseClient {
     constructor(firebaseConfig: {});
     private parseFireStoreDocument;
     initPath(path: string): Promise<void>;
+    private getFirebaseSource;
+    private insertDataInFirebaseWithId;
+    private addDataInFirebase;
+    private updateDataInFirebase;
     apiGetList(resourceName: string, params: IParamsGetList): Promise<IResponseGetList>;
     apiGetOne(resourceName: string, params: IParamsGetOne): Promise<IResponseGetOne>;
     apiCreate(resourceName: string, params: IParamsCreate): Promise<IResponseCreate>;
